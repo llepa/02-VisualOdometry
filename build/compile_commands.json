@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/Users/lepa/Library/Mobile Documents/com~apple~CloudDocs/MARR/Second Year/First Semester/Proabilistic Robotics/project/02-VisualOdometry/build",
-  "command": "/usr/bin/clang++  -I\"/Users/lepa/Library/Mobile Documents/com~apple~CloudDocs/MARR/Second Year/First Semester/Proabilistic Robotics/project/02-VisualOdometry/src\" -isystem /usr/local/Cellar/opencv/4.8.0_6/include/opencv4  -Wall -std=c++11 -O3 -DNDEBUG -g -std=gnu++11 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk -mmacosx-version-min=12.6 -o CMakeFiles/02-visualodometry.dir/src/main.cpp.o -c \"/Users/lepa/Library/Mobile Documents/com~apple~CloudDocs/MARR/Second Year/First Semester/Proabilistic Robotics/project/02-VisualOdometry/src/main.cpp\"",
-  "file": "/Users/lepa/Library/Mobile Documents/com~apple~CloudDocs/MARR/Second Year/First Semester/Proabilistic Robotics/project/02-VisualOdometry/src/main.cpp",
-  "output": "CMakeFiles/02-visualodometry.dir/src/main.cpp.o"
-}
-]
