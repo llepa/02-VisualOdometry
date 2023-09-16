@@ -15,10 +15,12 @@ struct Camera {
                                             0, 180, 240,
                                             0,   0,   1);
 
+    /*
     cv::Mat transform = (cv::Mat_<double>(4, 4) << 0, 0, 1, 0.2,
                                                 -1, 0, 0, 0,
                                                 0,-1, 0, 0,
                                                 0, 0, 0, 1);
+    */  
 
     double z_near = 0;
     double z_far = 5;
@@ -54,6 +56,11 @@ void match_points(const vector<Measurement>& measurements, const int idx1, const
     Measurement m2 = measurements[idx2];
     double threshold = 0.7;
 
+    if (idx1 < 0 || idx1 >= measurements.size() || idx2 < 0 || idx2 >= measurements.size()) {
+        std::cerr << "Invalid indices for measurements." << std::endl;
+        return;
+    }
+
     std::cout << "Finding best matches for each point..." << endl;
 
     // compute the minimum euclidean distance between each point in m1 and each point in m2 based on the appearance vector
@@ -73,20 +80,28 @@ void match_points(const vector<Measurement>& measurements, const int idx1, const
             std::cout << "min_idx is -1" << endl;
         }
         
+        if (m1.points2D.type() != CV_64F) {
+            std::cout << "m1.points2D is not of type CV_64F!" << std::endl;
+        }
+
         // control if the minimum distance is less than the threshold
         if (min_distance < threshold) {
             cv::Mat match1 = cv::Mat_<double>(1, 2);
             cv::Mat match2 = cv::Mat_<double>(1, 2);
-            match1.at<double>(0) = m1.points2D.at<double>(i, 0);
-            match1.at<double>(1) = m1.points2D.at<double>(i, 1);
-            match2.at<double>(0) = m2.points2D.at<double>(min_idx, 0);
-            match2.at<double>(1) = m2.points2D.at<double>(min_idx, 1);
+            
+            match1.at<double>(0, 0) = m1.points2D.at<double>(i, 0);
+            match1.at<double>(0, 1) = m1.points2D.at<double>(i, 1);
+            match2.at<double>(0, 0) = m2.points2D.at<double>(min_idx, 0);
+            match2.at<double>(0, 1) = m2.points2D.at<double>(min_idx, 1);
             matches1.push_back(match1);
             matches2.push_back(match2);
             cv::Mat match_ids = cv::Mat_<int>(1, 2);
             match_ids.at<int>(0) = m1.ids_meas[i];
             match_ids.at<int>(1) = m2.ids_meas[min_idx];
             matched_ids.push_back(match_ids);
+                        
+            // cout << "Matched Point Pair: (" << i << ", " << min_idx << ")" << endl;
+
         }
     }
     
@@ -164,12 +179,12 @@ Measurement extract_measurement(const string& filename) {
             meas.ids_meas.push_back(stoi(tokens[1]));
             meas.ids_real.push_back(stoi(tokens[2]));
             // add tokens from 3 to 4 to points2D
-            meas.points2D.push_back(stof(tokens[3]));
-            meas.points2D.push_back(stof(tokens[4]));
+            meas.points2D.push_back(stod(tokens[3]));
+            meas.points2D.push_back(stod(tokens[4]));
 
             // add tokens from 5 to 14 to appearances
             for (int i=5; i<15; i++) {
-                meas.appearances.push_back(stof(tokens[i]));
+                meas.appearances.push_back(stod(tokens[i]));
             }
 
         } else {
@@ -251,48 +266,93 @@ cv::Mat triangulate(cv::Mat& R, cv::Mat& t, cv::Mat& K, cv::Mat& matches1 , cv::
    return points3D;
 }
 
-int visualize_coordinates(cv::Mat point_matrix, cv::Mat matched_points1, cv::Mat matched_points2) {
-
-    // Visualizing coordinates
-    vector<cv::Point3f> cloud;
-    for (int i = 0; i < point_matrix.rows; i++ ){
-        cv::Point3d p(  point_matrix.at<double>( i , 0 ),
-                        point_matrix.at<double>( i , 1 ),
-                        point_matrix.at<double>( i , 2 ) );
-        cloud.push_back( p );
-    }
-    /*
-    // visualize 2D vector points matched_points1 and matched_points2 with different colors
-    vector<cv::Point3f> points1;
-    for (int i = 0; i < matched_points1; i++) {
-        cv::Point3d p(  matched_points1.at<double>( i , 0 ),
-                        matched_points1.at<double>( i , 1 ),
-                        0.0 );
-        points1.push_back( p );
-    }
-    */
-
+void visualize_3d_points(const cv::Mat& point_matrix) {
     // Create a window
     cv::viz::Viz3d window("3D Points");
 
+    // Create a vector to hold the 3D points
+    std::vector<cv::Point3f> cloud;
+
+    // Fill the cloud vector with points from the input matrix
+    for (int i = 0; i < point_matrix.rows; i++) {
+        cv::Point3f p(point_matrix.at<double>(i, 0),
+                      point_matrix.at<double>(i, 1),
+                      point_matrix.at<double>(i, 2));
+        cloud.push_back(p);
+    }
+
     // Create a WCloud object and set its properties
-    cv::viz::WCloud cloud_widget( cloud, cv::viz::Color::white() );
-    cloud_widget.setRenderingProperty(cv::viz::POINT_SIZE, 10);
+    cv::viz::WCloud cloud_widget(cloud, cv::viz::Color::white());
+    cloud_widget.setRenderingProperty(cv::viz::POINT_SIZE, 5);
+
     // Add the WCloud object to the window
     window.showWidget("cloud", cloud_widget);
 
+    // Create a coordinate system
     cv::viz::WCoordinateSystem cs(1.0);
     window.showWidget("CoordinateSystem", cs);
 
-    //cv::viz::Color white(255, 255, 255); // RGB values for white
-    //window.setBackgroundColor(white);
+    // Show the visualization
+    window.spin();
+}
 
-    //cv::Vec3d from(1.0, 1.0, 10.0); // camera position
-    //cv::Vec3d to(0., 0., 0.); // look at the center of the point cloud
-    //cv::Vec3d up(0.0, 0.0, 1.0); // up direction
-    //window.setViewerPose(cv::Affine3d(cv::Matx33d::eye(), from));
+void visualize_matched_points(const cv::Mat& matches1, const cv::Mat& matches2) {
+    // Create an empty canvas to draw the matched points
+    cv::Mat canvas(500, 500, CV_8UC3, cv::Scalar(255, 255, 255)); // White canvas
+
+    // Loop through the matched points and draw them on the canvas
+    for (int i = 0; i < matches1.rows; i++) {
+        cv::Point2f pt1(matches1.at<float>(i, 0), matches1.at<float>(i, 1));
+        cv::Point2f pt2(matches2.at<float>(i, 0), matches2.at<float>(i, 1));
+
+        // Draw a line connecting the matched points
+        cv::line(canvas, pt1, pt2, cv::Scalar(0, 0, 0), 1);  // Black line
+        cv::circle(canvas, pt1, 3, cv::Scalar(0, 0, 255), -1); // Red circle at pt1
+        cv::circle(canvas, pt2, 3, cv::Scalar(0, 0, 255), -1); // Red circle at pt2
+    }
+
+    // Display the canvas with matched points and lines
+    cv::imshow("Matched Points on 2D Plane", canvas);
+    cv::waitKey(0);
+}
+
+void visualize_2d_matched_points(const cv::Mat& matches1, const cv::Mat& matches2) {
+    // Create a Viz3d window
+    cv::viz::Viz3d window("2D Points in 3D");
+
+    // Create a vector to hold the 3D points
+    std::vector<cv::Point3d> cloud;
+
+    // Fill the cloud vector with points from matches1 and matches2
+    for (int i = 0; i < matches1.rows; i++) {
+        cv::Point2d p1(matches1.at<double>(i, 0), matches1.at<double>(i, 1));
+        cv::Point2d p2(matches2.at<double>(i, 0), matches2.at<double>(i, 1));
+        
+        // Create 3D points with Z-coordinate set to 0
+        cv::Point3d p1_3d(p1.x, p1.y, 0.0);
+        cv::Point3d p2_3d(p2.x, p2.y, 0.0);
+        
+        // Add the 3D points to the cloud
+        cloud.push_back(p1_3d);
+        cloud.push_back(p2_3d);
+    }
+
+    // Create a WCloud object and set its properties
+    cv::viz::WCloud cloud_widget(cloud, cv::viz::Color::white());
+    cloud_widget.setRenderingProperty(cv::viz::POINT_SIZE, 10);
+
+
+    // Add the cloud and coordinate system to the window
+    window.showWidget("Cloud", cloud_widget);
+
+    // Create an affine transformation to set the camera pose
+    cv::Affine3d pose = cv::viz::makeTransformToGlobal(cv::Vec3d(0.0, 0.0, 3.0), cv::Vec3d(0.0, 0.0, 0.0), cv::Vec3d(0.0, -1.0, 0.0));
+    window.setViewerPose(pose);
 
     // Show the visualization
     window.spin();
-    return 0;  
+}
+
+string size(cv::Mat m) {
+    return "[" + std::to_string(m.rows) + " x " + std::to_string(m.cols) + "]";
 }
