@@ -11,40 +11,40 @@ using std::vector;
 using std::pair;
 
 struct Camera {
-    cv::Mat K = (cv::Mat_<double>(3, 3) << 180, 0, 320,
+    cv::Mat K = (cv::Mat_<float>(3, 3) << 180, 0, 320,
                                             0, 180, 240,
                                             0,   0,   1);
 
     /*
-    cv::Mat transform = (cv::Mat_<double>(4, 4) << 0, 0, 1, 0.2,
+    cv::Mat transform = (cv::Mat_<float>(4, 4) << 0, 0, 1, 0.2,
                                                 -1, 0, 0, 0,
                                                 0,-1, 0, 0,
                                                 0, 0, 0, 1);
     */  
 
-    double z_near = 0;
-    double z_far = 5;
+    float z_near = 0;
+    float z_far = 5;
     int width = 640;
     int height = 480;           
 };
 
 struct Point3D {
-    cv::Mat coord_3D = cv::Mat_<double>(1, 3);
-    vector<double> appearance = vector<double>(10);
+    cv::Mat coord_3D = cv::Mat_<float>(1, 3);
+    vector<float> appearance = vector<float>(10);
 };
 
 struct Measurement {
     int seq;
-    vector<double> gt_pose = vector<double>(3);
-    vector<double> odometry_pose = vector<double>(3);
+    vector<float> gt_pose = vector<float>(3);
+    vector<float> odometry_pose = vector<float>(3);
     vector<int> ids_meas;
     vector<int> ids_real;
-    cv::Mat points2D = cv::Mat_<double>(0, 2);
-    cv::Mat appearances = cv::Mat_<double>(0, 10);
+    cv::Mat points2D = cv::Mat_<float>(0, 2);
+    cv::Mat appearances = cv::Mat_<float>(0, 10);
 };
 
-double euclidean_distance(const vector<double>& a, const vector<double>& b) {
-    double sum = 0;
+float euclidean_distance(const vector<float>& a, const vector<float>& b) {
+    float sum = 0;
     for (int i = 0; i < a.size(); i++) {
         sum += (a[i] - b[i]) * (a[i] - b[i]);
     }
@@ -54,7 +54,7 @@ double euclidean_distance(const vector<double>& a, const vector<double>& b) {
 void match_points(const vector<Measurement>& measurements, const int idx1, const int idx2, cv::Mat& matches1, cv::Mat& matches2, cv::Mat& matched_ids) {
     Measurement m1 = measurements[idx1];
     Measurement m2 = measurements[idx2];
-    double threshold = 0.7;
+    float threshold = 0.7;
 
     if (idx1 < 0 || idx1 >= measurements.size() || idx2 < 0 || idx2 >= measurements.size()) {
         std::cerr << "Invalid indices for measurements." << std::endl;
@@ -66,10 +66,10 @@ void match_points(const vector<Measurement>& measurements, const int idx1, const
     // compute the minimum euclidean distance between each point in m1 and each point in m2 based on the appearance vector
     // and add the pair of points to the matches matrix and the ids of points to the matched_ids matrix    
     for (int i = 0; i < m1.appearances.rows; i++) {
-        double min_distance = std::numeric_limits<double>::max();
+        float min_distance = std::numeric_limits<float>::max();
         int min_idx = -1;
         for (int j = 0; j < m2.appearances.rows; j++) {
-            double distance = euclidean_distance(m1.appearances.row(i), m2.appearances.row(j));
+            float distance = euclidean_distance(m1.appearances.row(i), m2.appearances.row(j));
             if (distance < min_distance) {
                 min_distance = distance;
                 min_idx = j;
@@ -80,19 +80,15 @@ void match_points(const vector<Measurement>& measurements, const int idx1, const
             std::cout << "min_idx is -1" << endl;
         }
         
-        if (m1.points2D.type() != CV_64F) {
-            std::cout << "m1.points2D is not of type CV_64F!" << std::endl;
-        }
-
         // control if the minimum distance is less than the threshold
         if (min_distance < threshold) {
-            cv::Mat match1 = cv::Mat_<double>(1, 2);
-            cv::Mat match2 = cv::Mat_<double>(1, 2);
+            cv::Mat match1 = cv::Mat_<float>(1, 2);
+            cv::Mat match2 = cv::Mat_<float>(1, 2);
             
-            match1.at<double>(0, 0) = m1.points2D.at<double>(i, 0);
-            match1.at<double>(0, 1) = m1.points2D.at<double>(i, 1);
-            match2.at<double>(0, 0) = m2.points2D.at<double>(min_idx, 0);
-            match2.at<double>(0, 1) = m2.points2D.at<double>(min_idx, 1);
+            match1.at<float>(0, 0) = m1.points2D.at<float>(i, 0);
+            match1.at<float>(0, 1) = m1.points2D.at<float>(i, 1);
+            match2.at<float>(0, 0) = m2.points2D.at<float>(min_idx, 0);
+            match2.at<float>(0, 1) = m2.points2D.at<float>(min_idx, 1);
             matches1.push_back(match1);
             matches2.push_back(match2);
             cv::Mat match_ids = cv::Mat_<int>(1, 2);
@@ -139,7 +135,7 @@ void decompose_fund_matrix(const cv::Mat& F, const cv::Mat& K, vector<cv::Point2
         std::cout << "Failed to recover pose." << std::endl;
     }
 
-    if (t_hat.at<double>(2) < 0) {
+    if (t_hat.at<float>(2) < 0) {
         R = R2;
         t = -t_hat;
     } else {
@@ -179,12 +175,12 @@ Measurement extract_measurement(const string& filename) {
             meas.ids_meas.push_back(stoi(tokens[1]));
             meas.ids_real.push_back(stoi(tokens[2]));
             // add tokens from 3 to 4 to points2D
-            meas.points2D.push_back(stod(tokens[3]));
-            meas.points2D.push_back(stod(tokens[4]));
+            meas.points2D.push_back(stof(tokens[3]));
+            meas.points2D.push_back(stof(tokens[4]));
 
             // add tokens from 5 to 14 to appearances
             for (int i=5; i<15; i++) {
-                meas.appearances.push_back(stod(tokens[i]));
+                meas.appearances.push_back(stof(tokens[i]));
             }
 
         } else {
@@ -229,9 +225,9 @@ vector<Point3D> extract_world(const string& filename) {
     while (getline(file, line)) {
         if (line.empty()) continue;
         vector<string> tokens = split(line, " ");
-        point.coord_3D.at<double>(0) = stof(tokens[1]);
-        point.coord_3D.at<double>(1) = stof(tokens[2]);
-        point.coord_3D.at<double>(2) = stof(tokens[3]);
+        point.coord_3D.at<float>(0) = stof(tokens[1]);
+        point.coord_3D.at<float>(1) = stof(tokens[2]);
+        point.coord_3D.at<float>(2) = stof(tokens[3]);
         for (int i=0; i<10; i++) {
             point.appearance[i] = stof(tokens[i+4]);
         }
@@ -245,7 +241,7 @@ cv::Mat triangulate(cv::Mat& R, cv::Mat& t, cv::Mat& K, cv::Mat& matches1 , cv::
     // print function description
     cout << "Triangulating points..." << endl;
 
-    cv::Mat identity = cv::Mat::eye(3, 4, CV_64F);
+    cv::Mat identity = cv::Mat::eye(3, 4, CV_32F);
     cv::Mat P1 = K * identity;   
     cv::Mat P2;
     cv::hconcat(R, t, P2);
@@ -275,9 +271,9 @@ void visualize_3d_points(const cv::Mat& point_matrix) {
 
     // Fill the cloud vector with points from the input matrix
     for (int i = 0; i < point_matrix.rows; i++) {
-        cv::Point3f p(point_matrix.at<double>(i, 0),
-                      point_matrix.at<double>(i, 1),
-                      point_matrix.at<double>(i, 2));
+        cv::Point3f p(point_matrix.at<float>(i, 0),
+                      point_matrix.at<float>(i, 1),
+                      point_matrix.at<float>(i, 2));
         cloud.push_back(p);
     }
 
@@ -325,8 +321,8 @@ void visualize_2d_matched_points(const cv::Mat& matches1, const cv::Mat& matches
 
     // Fill the cloud vector with points from matches1 and matches2
     for (int i = 0; i < matches1.rows; i++) {
-        cv::Point2d p1(matches1.at<double>(i, 0), matches1.at<double>(i, 1));
-        cv::Point2d p2(matches2.at<double>(i, 0), matches2.at<double>(i, 1));
+        cv::Point2d p1(matches1.at<float>(i, 0), matches1.at<float>(i, 1));
+        cv::Point2d p2(matches2.at<float>(i, 0), matches2.at<float>(i, 1));
         
         // Create 3D points with Z-coordinate set to 0
         cv::Point3d p1_3d(p1.x, p1.y, 0.0);
