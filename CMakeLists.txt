@@ -1,4 +1,3 @@
-# Project name
 # Set the minimum required CMake version
 cmake_minimum_required(VERSION 3.5)
 
@@ -6,24 +5,28 @@ cmake_minimum_required(VERSION 3.5)
 project(02-visualodometry)
 
 # Set CMake build flags
-set(CMAKE_BUILD_TYPE Debug)  # or Release for optimized release builds
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11 -O3 -DNDEBUG")
+set(CMAKE_BUILD_TYPE Debug)  # or Release for optimized builds
+set(CMAKE_CXX_STANDARD 17)   # C++17, adjust as necessary
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find and set up dependencies
 find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
+find_package(Eigen3 REQUIRED)
 
-# Set internal includes (your project's source files)
-include_directories(src)
-
-# Set executable output path
-set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}/build")
+# Set the executable output directory (modern CMake way)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build")
 
 # Add your project's source files
-set(SOURCES src/main.cpp)
+set(SOURCES src/main.cpp src/cam.cpp src/camera.cpp src/picp_solver.cpp src/my_utilities.cpp)
 
 # Create the executable target
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# Link the required libraries (OpenCV)
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+# Link the required libraries (OpenCV and Eigen3)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS} Eigen3::Eigen)
+
+# Set target-specific includes
+target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
+
+# Optionally, include your own source directory
+target_include_directories(${PROJECT_NAME} PRIVATE src)

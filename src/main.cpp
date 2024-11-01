@@ -3,63 +3,113 @@
 #include <string>
 #include <vector>
 #include <opencv2/opencv.hpp>
-#include "my_utilities.cpp"
+#include "my_utilities.h"
+#include "cam.h"
+#include "camera.h"
+#include "picp_solver.h"
 
-int main() {
+int main(int argc, char** argv) {
+    int n_meas = 120;   // Total number of measurements (frames)
+    int idx1 = 0;       // Starting frame index
+    int idx2 = 1;       // Next frame index (increased iteratively)
 
-    // Load and initialize data
-    int n_meas = 120;   
-    vector<Measurement> measurements = extract_measurements("./data/meas-", n_meas);
-    Camera camera = Camera(); // Default camera
-    vector<Point3D> points3D = extract_world("./data/world.dat");
+    // Load and initialize the data
+    std::vector<Measurement> measurements = load_and_initialize_data("./data/meas-", n_meas);
 
-    // Prepare matrices for matching
-    cv::Mat matched_ids = cv::Mat_<int>(0, 2);
-    cv::Mat matched_points1 = cv::Mat_<float>(0, 2);
-    cv::Mat matched_points2 = cv::Mat_<float>(0, 2);
+    // Camera object
+    Cam cam;
+    cv::Mat R(3, 3, CV_32F);
+    cv::Mat t(3, 1, CV_32F);
+    cv::Mat world_points;
 
-    // Match the points from two measurements
-    match_points(measurements, 0, 1, matched_points1, matched_points2, matched_ids);
+    // World map and camera initialization
+    pr::Camera pr_cam = pr::Camera(480, 640, cam.getEigenCamera(), Eigen::Isometry3f::Identity());
+    pr::Vector3fVector pr_world_points;
 
-    // Extract intrinsic camera matrix and set data type
-    cv::Mat K = camera.K;
-    K.convertTo(K, 6);
+    vector<Eigen::Isometry3f> predicted_poses, gt_poses;
+    predicted_poses.push_back(Eigen::Isometry3f::Identity());
+    gt_poses.push_back(Eigen::Isometry3f::Identity()); // also add following gt poses to vector
 
-    // Compute Essential matrix and recover pose
-    cv::Mat R, t, mask;
-    float focal = camera.K.at<float>(0, 0); // Focal length
-    cv::Point2d pp(camera.K.at<float>(0, 2), camera.K.at<float>(1, 2));  // Principal point
+    std::vector<std::vector<Eigen::Vector2i>> all_matched_ids_meas;
 
-    cv::Mat E = findEssentialMat(matched_points2, matched_points1, focal, pp, cv::RANSAC, 0.999, 1.0, mask);
-    recoverPose(E, matched_points2, matched_points1, R, t, focal, pp, mask);
+    // for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < measurements.size(); ++i) {
+        idx1 = i;
+        idx2 = i + 1;
 
-    // Compute the projection matrices for the two views
-    cv::Mat P1 = camera.K * cv::Mat::eye(3, 4, CV_32F);
-    cv::Mat R_t = cv::Mat::zeros(3, 4, CV_32F); 
-    R.copyTo(R_t(cv::Rect(0, 0, 3, 3)));
-    t.copyTo(R_t(cv::Rect(3, 0, 1, 3)));
-    cv::Mat P2 = camera.K * R_t;
+        std::cout << "Iteration: " << i+1;
 
-    // Triangulate points to get the 3D world coordinates
-    cv::Mat points4D(4, matched_points1.cols, CV_32F);
-    cv::triangulatePoints(P1, P2, matched_points1.t(), matched_points2.t(), points4D);
+        // check for correspondences handling points already known
+        std::vector<Eigen::Vector2i> matched_ids_real, matched_ids_meas;
+        cv::Mat matched_points1, matched_points2;
+        match_points(measurements, idx1, idx2, matched_points1, matched_points2, matched_ids_meas, matched_ids_real);
 
-    // Convert homogeneous 4D points to 3D
-    cv::Mat points3D_tr(points4D.cols, 3, CV_32F);
-    for (int i = 0; i < points4D.cols; i++) {
-        float w = points4D.at<float>(3, i);  // Homogeneous coordinate
+        // std::cout << ", matched_points1 size: " << matched_points1.size() << ", matched_points2 size: " << matched_points2.size() << std::endl;
+
+        int num_inliers = matched_points1.size[0];
+        int total_points = measurements[idx1].points2D.size[0] > measurements[idx2].points2D.size[0] 
+                         ? measurements[idx1].points2D.size[0] 
+                         : measurements[idx2].points2D.size[0];
+        int num_outliers = total_points - num_inliers;
+        std::cout << ", number of inliers: " << num_inliers << ", number of outliers: " << num_outliers << std::endl;
         
-        points3D_tr.at<float>(i, 0) = points4D.at<float>(0, i) / w;
-        points3D_tr.at<float>(i, 1) = points4D.at<float>(1, i) / w;
-        points3D_tr.at<float>(i, 2) = points4D.at<float>(2, i) / w;
+        all_matched_ids_meas.push_back(matched_ids_meas);
+
+        // printVector2i(matched_ids_meas);
+        // check them with gt
+
+        world_points.create(matched_points1.rows, 3, CV_32F); 
+
+        if (i == 0) {
+            // First iteration: Triangulate to get the initial world map
+            cv::Mat mask;
+            cam.computeEssentialAndRecoverPose(matched_points1, matched_points2, R, t, mask);
+
+            world_points.create(matched_points1.rows, 3, CV_32F);
+            cam.triangulatePoints(R, t, matched_points1, matched_points2, world_points);
+            
+            // std::cout << "world_points:\n" << world_points << std::endl;
+            
+            pr_world_points = matToV3fV_Type21(world_points);
+            
+            // TODO check for correctness
+            Eigen::Isometry3f rel_pose = createIsometryFromRt(cvToEigenMatrix(R), cvToEigenVector(t));
+            predicted_poses.push_back(rel_pose.inverse());
+
+            // Initialize camera pose from R, t
+            pr_cam.setWorldInCameraPose(rel_pose);
+
+        } else {
+            // find matches between previous frame and current
+            // Subsequent iterations: Use ICP to refine the camera pose
+            pr::Vector2fVector pr_image_points = matToV2fV(measurements[idx2].points2D);
+
+            std::vector<Eigen::Vector2i> common_correspondences;
+            std::vector<Eigen::Vector2i> new_correspondences;
+            cv::Mat new_world_points;
+
+            filter_correspondences(all_matched_ids_meas, 
+                                  common_correspondences,
+                                  new_correspondences,
+                                  world_points,
+                                  new_world_points);
+
+            std::cout << "\nNumber of mutual correspondences between frame " << i << " and frame " << i+1 << ": " << common_correspondences.size() << std::endl;
+
+            pr::IntPairVector correspondences = imgToWorldCorrespondences(world_points, matched_ids_meas);
+
+            // Run ICP to update camera pose
+            oneRound(pr_cam, pr_world_points, pr_image_points, correspondences);
+        }
+
+        // Print the updated camera pose after each iteration
+        // std::cout << "\nUpdated Camera Pose: " << std::endl;
+        //printIsometry(pr_cam.worldInCameraPose());
+
+        // Visualize the matches
+        // visualizeMatches(matched_points1, matched_points2);
     }
+    // printIsometry(pr_cam.worldInCameraPose());
 
-    // Visualize the 3D points
-    visualize_3d_points(points3D_tr);
-
-    /*
-    // TODO: Work on ground truth data
-    */
-    
     return 0;
 }

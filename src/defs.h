@@ -1,8 +1,8 @@
 #pragma once
-#include <eigen3/Eigen/Core>
-#include <eigen3/Eigen/Geometry>
-#include <eigen3/Eigen/Cholesky>
-#include <eigen3/Eigen/StdVector>
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+#include <Eigen/Cholesky>
+#include <Eigen/StdVector>
 #include <iostream>
 #include <unistd.h>
 #include "opencv2/opencv.hpp"

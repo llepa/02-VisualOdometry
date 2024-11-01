@@ -34,7 +34,7 @@ What we expect you to do in Visual Odometry?
 Evaluation of your poses:
 Evaluate your solution comparing it with the gt using the delta between poses
 
-For example, suppose we these two consecutive poses
+For example, suppose we have these two consecutive poses
 T_0
 T_1 
 
@@ -52,7 +52,7 @@ T_1
 Evaluation of your map:
 - your estimate map is up to scale
 - use the ratio previously estimated to scale your points 
-- compute the whole RMSE   
+- compute the whole RMSE
 
 HINTS:
 - develop each component independently and use the groundtruth for testing

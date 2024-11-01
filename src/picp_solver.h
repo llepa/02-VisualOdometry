@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 #include "camera.h"
+#include "my_utilities.h"
 
 namespace pr {
 
