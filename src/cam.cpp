@@ -1,6 +1,10 @@
 #include "cam.h"
+
+#include "my_utilities.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
+#include <opencv2/core/eigen.hpp>
+
 
 Cam::Cam() {
     K_cv = (cv::Mat_<float>(3, 3) << 180, 0, 320,
@@ -15,78 +19,113 @@ Cam::Cam() {
     height = 480; 
 }
 
-void Cam::computeEssentialAndRecoverPose(const cv::Mat& matched_points1, 
-                                         const cv::Mat& matched_points2,
-                                         cv::Mat& R, 
-                                         cv::Mat& t, 
+void Cam::computeEssentialAndRecoverPose(const std::vector<Data_Point>& points1,
+                                         const std::vector<Data_Point>& points2,
                                          cv::Mat& mask) {
-    // float focal = K_cv.at<float>(0, 0);
-    // cv::Point2d pp(K_cv.at<float>(0, 2), K_cv.at<float>(1, 2));
-    // cv::Mat E = findEssentialMat(matched_points1, matched_points2, focal, pp, cv::RANSAC, 0.999, 1.0, mask);
-    // recoverPose(E, matched_points1, matched_points2, R, t, focal, pp, mask);
+    cv::setRNGSeed(1);
+    std::vector<cv::Point2f> cv_points1 = extract_coordinates(points1);
+    std::vector<cv::Point2f> cv_points2 = extract_coordinates(points2);
 
-    cv::Mat E = findEssentialMat(matched_points1, matched_points2, K_cv, cv::RANSAC);
-    cv::recoverPose(E, matched_points1, matched_points2, K_cv, R, t, mask);
-}
+    cv::Mat E = cv::findEssentialMat(
+        cv_points1,
+        cv_points2,
+        K_cv,
+        cv::RANSAC
+        );
 
-void Cam::triangulatePoints(const cv::Mat& R, 
-                            const cv::Mat& t,
-                            const cv::Mat& matched_points1,
-                            const cv::Mat& matched_points2,
-                            cv::Mat& points3D) {
-
-    // std::cout << "Triangulating points..." << std::endl;
-    cv::Mat P1, P2;
-    _computeProjectionMatrices(R, t, P1, P2);
-    cv::Mat points4D;
-    cv::triangulatePoints(P1, P2, matched_points1.t(), matched_points2.t(), points4D);
-
-    cv::convertPointsFromHomogeneous(points4D.t(), points3D);
-
-    // for (int i = 0; i < points4D.cols; i++) {
-    //     float w = points4D.at<float>(3, i);
-    //     points3D.at<float>(i, 0) = points4D.at<float>(0, i) / w;
-    //     points3D.at<float>(i, 1) = points4D.at<float>(1, i) / w;
-    //     points3D.at<float>(i, 2) = points4D.at<float>(2, i) / w;
-    // }
-
-    // std::cout << "Triangulation finished" << std::endl;
-}
-
-void Cam::_computeProjectionMatrices(const cv::Mat& R, 
-                                    const cv::Mat& t,
-                                    cv::Mat& P1, 
-                                    cv::Mat& P2) {
-    P1 = K_cv * cv::Mat::eye(3, 4, CV_32F);
-    cv::Mat R_t = cv::Mat::zeros(3, 4, CV_32F);
-
-    // std::cout << "R: " << "\n" << R << std::endl;
-    // std::cout << "t: " << "\n" << t << std::endl;
-
-    R.copyTo(R_t(cv::Rect(0, 0, 3, 3)));
-    t.copyTo(R_t(cv::Rect(3, 0, 1, 3)));
-
-    // std::cout << "R_t: " << "\n" << R_t << std::endl;
-    
-    P2 = K_cv * R_t;
-}
-
-cv::Mat Cam::projectPoints(const cv::Mat& R, const cv::Mat& t, const cv::Mat& points3D) {
-    cv::Mat projected_points(points3D.rows, 2, CV_32F);
-    cv::Mat P1, P2;
-    _computeProjectionMatrices(R, t, P1, P2);
-    for (int i = 0; i < points3D.rows; i++) {
-        cv::Mat point3D = (cv::Mat_<float>(4, 1) << points3D.at<float>(i, 0), 
-                          points3D.at<float>(i, 1), points3D.at<float>(i, 2), 1.0);
-        cv::Mat img_point = P2 * point3D;
-        float x = img_point.at<float>(0, 0) / img_point.at<float>(2, 0);
-        float y = img_point.at<float>(1, 0) / img_point.at<float>(2, 0);
-        projected_points.at<float>(i, 0) = x;
-        projected_points.at<float>(i, 1) = y;
+    if (E.empty()) {
+        std::cerr << "Essential matrix computation failed!" << std::endl;
+        return;
     }
 
-    return projected_points;
+    recoverPose(
+        E,
+        cv_points1,
+        cv_points2,
+        K_cv,
+        R_,
+        t_,
+        mask
+        );
+
+    std::cout << "Rotation matrix (R):\n" << R_ << std::endl;
+    std::cout << "Translation vector (t):\n" << t_ << std::endl;
 }
+
+
+void Cam::triangulatePoints(const cv::Mat& T1,
+                            const cv::Mat& T2,
+                            const std::vector<Data_Point>& points1,
+                            const std::vector<Data_Point>& points2,
+                            cv::Mat& points3D) {
+    // Check if we have enough points
+    if (points1.empty() || points2.empty()) {
+        std::cout << "Skipping triangulation: not enough points." << std::endl;
+        return;
+    }
+
+    cv::Mat pts1 = extract_matrix_coordinates(points1);
+    cv::Mat pts2 = extract_matrix_coordinates(points2);
+
+    // Compute projection matrices using the intrinsic matrix K_cv
+    cv::Mat P1, P2, points4D;
+    P1 = K_cv * T1(cv::Range(0, 3), cv::Range(0, 4));
+    P2 = K_cv * T2(cv::Range(0, 3), cv::Range(0, 4));
+
+    std::cout << "T1: \n" << T1 << std::endl;
+    std::cout << "T2: \n" << T2 << std::endl;
+
+    // Note: cv::triangulatePoints expects input points as a 2 x N matrix, so we transpose pts1 and pts2.
+    cv::triangulatePoints(
+        P1,
+        P2,
+        pts1.t(),
+        pts2.t(),
+        points4D);
+
+    // Convert from homogeneous coordinates.
+    points4D = points4D.t();
+    cv::Mat points3D_temp(points4D.rows, 3, CV_32F);
+
+    for (int i = 0; i < points4D.rows; ++i) {
+        float w = points4D.at<float>(i, 3);
+        if (std::fabs(w) > std::numeric_limits<float>::epsilon()) {
+            points3D_temp.at<float>(i, 0) = points4D.at<float>(i, 0) / w;
+            points3D_temp.at<float>(i, 1) = points4D.at<float>(i, 1) / w;
+            points3D_temp.at<float>(i, 2) = points4D.at<float>(i, 2) / w;
+        } else {
+            // Handle the case where w is zero (point at infinity)
+            points3D_temp.at<float>(i, 0) = 0.0f;
+            points3D_temp.at<float>(i, 1) = 0.0f;
+            points3D_temp.at<float>(i, 2) = 0.0f;
+        }
+    }
+
+    points3D = points3D_temp.clone();
+}
+
+
+void Cam::_computeProjectionMatrices(const cv::Mat& R1, 
+                                     const cv::Mat& t1,
+                                     const cv::Mat& R2, 
+                                     const cv::Mat& t2,
+                                     cv::Mat& P1, 
+                                     cv::Mat& P2) {
+
+    
+
+    cv::Mat R_t1 = cv::Mat::zeros(3, 4, CV_32F);
+    R1.copyTo(R_t1(cv::Rect(0, 0, 3, 3)));
+    t1.copyTo(R_t1(cv::Rect(3, 0, 1, 3)));
+
+    cv::Mat R_t2 = cv::Mat::zeros(3, 4, CV_32F);
+    R2.copyTo(R_t2(cv::Rect(0, 0, 3, 3)));
+    t2.copyTo(R_t2(cv::Rect(3, 0, 1, 3)));
+
+    P1 = K_cv * R_t1;
+    P2 = K_cv * R_t2;
+}
+
 
 void Cam::visualizePoints(const cv::Mat& point_matrix) {
     // Create a window
@@ -123,3 +162,7 @@ Eigen::Matrix3f Cam::getEigenCamera() {
     return K_eig;
 }
 
+void Cam::normalize_translation(cv::Mat& t) {
+    // Remove or correct this function
+    // Incorrectly modifying the translation vector can distort the pose estimation
+}
