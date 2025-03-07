@@ -19,12 +19,12 @@ Cam::Cam() {
     height = 480; 
 }
 
-void Cam::computeEssentialAndRecoverPose(const std::vector<Data_Point>& points1,
-                                         const std::vector<Data_Point>& points2,
+void Cam::computeEssentialAndRecoverPose(const std::vector<std::pair<Data_Point, Data_Point>> &matches,
                                          cv::Mat& mask) {
+
     cv::setRNGSeed(1);
-    std::vector<cv::Point2f> cv_points1 = extract_coordinates(points1);
-    std::vector<cv::Point2f> cv_points2 = extract_coordinates(points2);
+    std::vector<cv::Point2f> cv_points1, cv_points2;
+    extract_coordinates_from_matches(matches, cv_points1, cv_points2);
 
     cv::Mat E = cv::findEssentialMat(
         cv_points1,
@@ -55,17 +55,20 @@ void Cam::computeEssentialAndRecoverPose(const std::vector<Data_Point>& points1,
 
 void Cam::triangulatePoints(const cv::Mat& T1,
                             const cv::Mat& T2,
-                            const std::vector<Data_Point>& points1,
-                            const std::vector<Data_Point>& points2,
+                            std::vector<std::pair<Data_Point, Data_Point>>& matches,
                             cv::Mat& points3D) {
+
+    std::vector<cv::Point2f> points1, points2;
+    extract_coordinates_from_matches(matches, points1, points2);
+
     // Check if we have enough points
     if (points1.empty() || points2.empty()) {
         std::cout << "Skipping triangulation: not enough points." << std::endl;
         return;
     }
 
-    cv::Mat pts1 = extract_matrix_coordinates(points1);
-    cv::Mat pts2 = extract_matrix_coordinates(points2);
+    // cv::Mat pts1 = extract_matrix_coordinates(points1);
+    // cv::Mat pts2 = extract_matrix_coordinates(points2);
 
     // Compute projection matrices using the intrinsic matrix K_cv
     cv::Mat P1, P2, points4D;
@@ -79,8 +82,8 @@ void Cam::triangulatePoints(const cv::Mat& T1,
     cv::triangulatePoints(
         P1,
         P2,
-        pts1.t(),
-        pts2.t(),
+        points1,
+        points2,
         points4D);
 
     // Convert from homogeneous coordinates.

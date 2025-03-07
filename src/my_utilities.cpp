@@ -208,6 +208,20 @@ std::vector<cv::Point2f> extract_coordinates(const std::vector<Data_Point>& poin
     return coordinates;
 }
 
+void extract_coordinates_from_matches(
+    std::vector<std::pair<Data_Point, Data_Point>> matches,
+    std::vector<cv::Point2f>& matches1,
+    std::vector<cv::Point2f>& matches2
+){
+    matches1.reserve(matches.size());
+    matches2.reserve(matches.size());
+    for (const auto& match : matches) {
+        matches1.push_back(match.first.coordinates);
+        matches2.push_back(match.second.coordinates);
+    }
+}
+
+
 cv::Mat extract_matrix_coordinates(const std::vector<Data_Point>& points) {
     cv::Mat pts1(static_cast<int>(points.size()), 2, CV_32F);
     for (size_t i = 0; i < points.size(); i++) {

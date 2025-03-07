@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
             matches,
             correspondences_meas,
             correspondences_gt
-            );
+        );
 
         int num_inliers = matches.size();
         int total_points = std::max((int)measurements[idx1].data_points.size(), 
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
         if (i == 0) {
             // First iteration: Compute essential matrix and recover initial relative pose
             cv::Mat mask;
-            cam.computeEssentialAndRecoverPose(points1, points2, mask);
+            cam.computeEssentialAndRecoverPose(matches, mask);
             
             cv::Mat R = cam.getRotationMatrix();
             cv::Mat t = cam.getTranslationVector();
@@ -93,7 +93,12 @@ int main(int argc, char** argv) {
             t.copyTo(T2(cv::Range(0,3), cv::Range(3,4)));
 
             // Triangulate initial set of 3D points
-            cam.triangulatePoints(T1, T2, points1, points2, world_points);
+            cam.triangulatePoints(
+                T1,
+                T2,
+                matches,
+                world_points
+            );
 
             // Convert rotation and translation to Eigen
             Eigen::Matrix3f R_eigen = cvToEigenMatrix(R);
@@ -117,11 +122,13 @@ int main(int argc, char** argv) {
             std::cout << "*** Filtering correspondences..." << std::endl;
 
             // Filter correspondences to separate common and new matches, and update world points if needed
-            filter_correspondences(all_correspondences, 
-                                   common_correspondences,
-                                   new_correspondences,
-                                   world_points,
-                                   common_world_points);
+            filter_correspondences(
+                all_correspondences,
+                common_correspondences,
+                new_correspondences,
+                world_points,
+                common_world_points
+            );
 
             // Update world_points if common_world_points is not empty
             if (!common_world_points.empty()) {
@@ -154,11 +161,13 @@ int main(int argc, char** argv) {
             std::cout << "Filtering matches..." << std::endl;
 
             // Filter new correspondences to get matched image points
-            filter_matches(measurements[idx1].data_points, 
-                           measurements[idx2].data_points, 
-                           new_correspondences, 
-                           filtered_img_points1, 
-                           filtered_img_points2);
+            filter_matches(
+                measurements[idx1].data_points,
+                measurements[idx2].data_points,
+                new_correspondences,
+                filtered_img_points1,
+                filtered_img_points2
+            );
 
             std::cout << "*** Triangulating points..." << std::endl;
 
@@ -168,10 +177,9 @@ int main(int argc, char** argv) {
             cam.triangulatePoints(
                 isometry3fToCvMat(T1),
                 isometry3fToCvMat(T2),
-                filtered_img_points1,
-                filtered_img_points2,
+                matches,
                 new_world_points_local
-                );
+            );
 
             std::cout << "Previous world points: " << world_points.rows << std::endl;
             std::cout << "Newly found world points: " << new_world_points_local.rows << std::endl;

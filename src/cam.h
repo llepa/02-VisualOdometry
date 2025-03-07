@@ -20,29 +20,24 @@ public:
     /**
      * @brief Computes the essential matrix from matched points and recovers the pose (R and t).
      *        The computed rotation and translation are stored internally.
-     * 
-     * @param matched_points1 Matched keypoints from the first frame (Nx2, CV_32F).
-     * @param matched_points2 Matched keypoints from the second frame (Nx2, CV_32F).
+     *
      * @param mask Output mask indicating inlier matches after RANSAC.
      */
-    void computeEssentialAndRecoverPose(const std::vector<Data_Point>& matched_points1,
-                                         const std::vector<Data_Point>& matched_points2,
-                                         cv::Mat& mask);
+    void computeEssentialAndRecoverPose(const std::vector<std::pair<Data_Point, Data_Point>>& matches,
+                                        cv::Mat& mask);
 
     /**
      * @brief Triangulates points given two projection matrices and matched keypoints.
      * 
      * @param T1 Projection matrix [R1|t1] for the first view (4x4, CV_32F).
      * @param T2 Projection matrix [R2|t2] for the second view (4x4, CV_32F).
-     * @param matched_points1 Matched points from the first frame (Nx2, CV_32F).
-     * @param matched_points2 Matched points from the second frame (Nx2, CV_32F).
+     * @param matches
      * @param points3D Output 3D points in homogeneous coordinates (Nx3, CV_32F).
      */
     void triangulatePoints(const cv::Mat& T1,
-                           const cv::Mat& T2,
-                           const std::vector<Data_Point>& matched_points1,
-                           const std::vector<Data_Point>& matched_points2,
-                           cv::Mat& points3D);
+                            const cv::Mat& T2,
+                            std::vector<std::pair<Data_Point, Data_Point>>& matches,
+                            cv::Mat& points3D);
 
     /**
      * @brief Projects 3D points into the image given rotation and translation.

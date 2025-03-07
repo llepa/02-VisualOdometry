@@ -55,6 +55,11 @@ using IntPairVector = std::vector<Eigen::Vector2i>;
 float euclidean_distance(const Eigen::VectorXf& vec1, const Eigen::VectorXf& vec2);
 std::string size(const cv::Mat& m);
 std::vector<cv::Point2f> extract_coordinates(const std::vector<Data_Point>& points);
+void extract_coordinates_from_matches(
+    std::vector<std::pair<Data_Point, Data_Point>> matches,
+    std::vector<cv::Point2f>& matches1,
+    std::vector<cv::Point2f>& matches2
+);
 cv::Mat extract_matrix_coordinates(const std::vector<Data_Point>& points);
 void match_points(const std::vector<Data_Point>& data_points1,
                  const std::vector<Data_Point>& data_points2,
