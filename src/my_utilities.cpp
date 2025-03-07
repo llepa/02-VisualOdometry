@@ -78,7 +78,6 @@ Measurement extract_measurement(const std::string& filename) {
                 continue;
             }
             meas.odometry_pose[0] = std::stof(tokens[1]);
-            meas.odometry_pose[1] = std::stof(tokens[2]);
             meas.odometry_pose[2] = std::stof(tokens[3]);
         } 
         else if (tokens[0] == "point") {
@@ -883,40 +882,86 @@ void visualizeMatches(const cv::Mat& matched_points1, const cv::Mat& matched_poi
 }
 
 /**
- * @brief Runs one round of the PICP solver to estimate the camera pose.
+ * @brief Runs an improved version of the PICP solver with robust convergence criteria.
  * 
- * @param last_pose_estimate The last estimated pose (camera_to_world).
+ * @param last_pose_estimate The previous world-to-camera pose.
  * @param pr_cam The PICP Camera object.
  * @param world_points The current world points.
  * @param image_points The current image points.
  * @param correspondences The correspondences between world and image points.
- * @return Eigen::Isometry3f The updated estimated pose (camera_to_world).
+ * @return Eigen::Isometry3f The updated world-to-camera pose.
  */
 Eigen::Isometry3f oneRound(Eigen::Isometry3f last_pose_estimate, 
                           pr::Camera& pr_cam, 
                           const pr::Vector3fVector& world_points, 
                           const pr::Vector2fVector& image_points, 
-                          const pr::IntPairVector& correspondences /* add the world in camera pose isometry */ ) {
-
-    int maxIterations = 100;
-    double convergenceThreshold = 0.00001;
-    double prevError = std::numeric_limits<double>::max();
-    double currentError;
-
+                          const pr::IntPairVector& correspondences) {
+    
+    // Early return if not enough correspondences
+    if (correspondences.size() < 10) {
+        std::cerr << "Warning: Not enough correspondences for pose estimation (" 
+                  << correspondences.size() << " < 10), using previous pose" << std::endl;
+        return last_pose_estimate;
+    }
+    
+    // Initialize the solver with optimized parameters
     pr::PICPSolver solver;
     pr_cam.setWorldInCameraPose(last_pose_estimate);
     solver.init(pr_cam, world_points, image_points);
-
-    for (int i = 0; i < maxIterations; i++) {
-        solver.oneRound(correspondences, false);
-        currentError = solver.chiInliers();
+    
+    // Set kernel threshold to a more reasonable value (100)
+    solver.setKernelThreshold(100.0f);
+    
+    // Multiple iterations with increasingly strict convergence criteria
+    int totalIterations = 0;
+    const int maxIterations = 100;
+    double convergenceThreshold = 0.01;  // Start with a loose threshold
+    double prevError = std::numeric_limits<double>::max();
+    double currentError = prevError;
+    
+    // Multi-stage optimization
+    for (int stage = 0; stage < 3; ++stage) {
+        bool converged = false;
         
-        if (std::abs(prevError - currentError) < convergenceThreshold) {
+        // Run iterations with current convergence threshold
+        for (int i = 0; i < maxIterations/3; ++i) {
+            // Run one round of the solver
+            if (!solver.oneRound(correspondences, stage < 2)) { // Use outliers in first two stages
+                break;  // Skip if solver fails
+            }
+            
+            totalIterations++;
+            currentError = solver.chiInliers();
+            
+            // Check for convergence using relative improvement
+            double relImprovement = 0;
+            if (prevError > 1e-10) {
+                relImprovement = std::abs(prevError - currentError) / prevError;
+            }
+            
+            if (relImprovement < convergenceThreshold) {
+                converged = true;
+                break;
+            }
+            
+            prevError = currentError;
+        }
+        
+        // Tighten convergence criteria for next stage
+        convergenceThreshold *= 0.1;
+        
+        // Check if we've already reached good convergence
+        if (converged && solver.numInliers() > correspondences.size() * 0.7) {
             break;
         }
-        prevError = currentError;
     }
-    // std::cout << "error (inliers): " << currentError << " (outliers): " << solver.chiOutliers() << std::endl;
+    
+    double inlierRatio = static_cast<double>(solver.numInliers()) / correspondences.size();
+    std::cout << "PICP completed with " << totalIterations << " iterations, " 
+              << solver.numInliers() << "/" << correspondences.size() 
+              << " inliers (" << (inlierRatio * 100.0) << "%), "
+              << "error: " << currentError << std::endl;
+    
     return solver.camera().worldInCameraPose();
 }
 

@@ -8,10 +8,10 @@ namespace pr {
   PICPSolver::PICPSolver(){
     _world_points=0;
     _reference_image_points=0;
-    _damping=1;
-    _min_num_inliers=0;
+    _damping=0.1;  // Reduced damping for smoother convergence
+    _min_num_inliers=10;  // Set minimum number of inliers to ensure stability
     _num_inliers=0;
-    _kernel_thereshold=1000; // 33 pixels
+    _kernel_thereshold=100;  // Reduced kernel threshold from 1000 to 100 (~ 10 pixels)
   }
 
   void PICPSolver::init(const Camera& camera_,
@@ -59,21 +59,35 @@ namespace pr {
     _num_inliers=0;
     _chi_inliers=0;
     _chi_outliers=0;
+    
+    // Count valid correspondences for better diagnostics
+    int valid_correspondences = 0;
+    
     for (const IntPair& correspondence: correspondences){
       Eigen::Vector2f e;
       Matrix2_6f J;
       int ref_idx=correspondence.first;
       int curr_idx=correspondence.second;
+      
+      // Make sure indices are within bounds
+      if (ref_idx < 0 || ref_idx >= static_cast<int>(_reference_image_points->size()) || 
+          curr_idx < 0 || curr_idx >= static_cast<int>(_world_points->size())) {
+        continue;
+      }
+      
       bool inside=errorAndJacobian(e,
                                    J,
                                    (*_world_points)[curr_idx],
                                    (*_reference_image_points)[ref_idx]);
-      if (! inside)
+      if (!inside)
         continue;
-
+        
+      valid_correspondences++;
+      
       float chi=e.dot(e);
       float lambda=1;
       bool is_inlier=true;
+      
       if (chi>_kernel_thereshold){
         lambda=sqrt(_kernel_thereshold/chi);
         is_inlier=false;
@@ -88,19 +102,45 @@ namespace pr {
         _b+=J.transpose()*e*lambda;
       }
     }
+    
+    if (valid_correspondences > 0) {
+      std::cout << "Inliers/Total: " << _num_inliers << "/" << valid_correspondences 
+                << " (" << (100.0f * _num_inliers / valid_correspondences) << "%)" << std::endl;
+    }
   }
 
   bool PICPSolver::oneRound(const IntPairVector& correspondences, bool keep_outliers){
     using namespace std;
     linearize(correspondences, keep_outliers);
-    _H+=Matrix6f::Identity()*_damping;
-    if(_num_inliers<_min_num_inliers) {
-      cerr << "too few inliers, skipping" << endl;
+    
+    // Add damping to the system - adaptive damping based on inlier ratio
+    float effective_damping = _damping;
+    if (!correspondences.empty()) {
+      float inlier_ratio = static_cast<float>(_num_inliers) / correspondences.size();
+      if (inlier_ratio < 0.5f) {
+        // Increase damping if inlier ratio is low
+        effective_damping *= (1.0f + (0.5f - inlier_ratio) * 2.0f);
+      }
+    }
+    
+    _H += Matrix6f::Identity() * effective_damping;
+    
+    if(_num_inliers < _min_num_inliers) {
+      cerr << "Too few inliers (" << _num_inliers << " < " << _min_num_inliers << "), skipping optimization" << endl;
       return false;
     }
-    //compute a solution
+    
+    // Compute a solution
     Vector6f dx = _H.ldlt().solve(-_b);
-    _camera.setWorldInCameraPose(v2tEuler(dx)*_camera.worldInCameraPose());
+    
+    // Check for numerical issues
+    if (!isfinite(dx.sum())) {
+      cerr << "Numerical issues detected in PICP solution" << endl;
+      return false;
+    }
+    
+    // Apply the solution
+    _camera.setWorldInCameraPose(v2tEuler(dx) * _camera.worldInCameraPose());
     return true;
   }
 }
