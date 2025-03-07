@@ -36,6 +36,7 @@ int main(int argc, char** argv) {
     // Initialize pose arrays and error accumulators
     std::vector<Eigen::Isometry3f> estimated_poses, gt_poses;
     std::vector<float> errors_rotation, errors_translation;
+    std::vector<float> scale_factors;
 
     // Set initial poses (camera and ground truth) to identity
     estimated_poses.emplace_back(Eigen::Isometry3f::Identity());
@@ -204,15 +205,47 @@ int main(int argc, char** argv) {
             float angle_error = computeRotationError(R_err);
             errors_rotation.push_back(angle_error);
 
-            // Translation error
-            Eigen::Vector2d translation_computed(relative_pose.translation()(0), relative_pose.translation()(1));
-            Eigen::Vector2d translation_gt(relative_pose_gt.translation()(0), relative_pose_gt.translation()(1));
+            // Translation error and scale factor
+            float trans_estimated = relative_pose.translation().norm();
+            float trans_gt = relative_pose_gt.translation().norm();
+            
+            if (trans_gt > 0.001f) {  // Avoid division by very small values
+                float current_scale = trans_gt / trans_estimated;
+                scale_factors.push_back(current_scale);
+                std::cout << "Scale factor: " << current_scale << std::endl;
+            }
+
+            // Translation error (without applying scale yet)
+            Eigen::Vector2f translation_computed(relative_pose.translation()(0), relative_pose.translation()(1));
+            Eigen::Vector2f translation_gt(relative_pose_gt.translation()(0), relative_pose_gt.translation()(1));
             float translation_error = (translation_computed - translation_gt).norm();
             errors_translation.push_back(translation_error);
 
             std::cout << "Rotational error: " << angle_error << " degrees" << std::endl;
             std::cout << "Translational error: " << translation_error << " units" << std::endl;
         }
+    }
+
+    // Compute median scale factor for consistent scaling
+    float median_scale = 1.0f;
+    if (!scale_factors.empty()) {
+        std::sort(scale_factors.begin(), scale_factors.end());
+        if (scale_factors.size() % 2 == 0) {
+            median_scale = (scale_factors[scale_factors.size()/2 - 1] + scale_factors[scale_factors.size()/2]) / 2.0f;
+        } else {
+            median_scale = scale_factors[scale_factors.size()/2];
+        }
+        std::cout << "\nMedian scale factor: " << median_scale << std::endl;
+    }
+
+    // Apply consistent scaling to all estimated poses except the first one (identity)
+    std::vector<Eigen::Isometry3f> scaled_poses;
+    scaled_poses.push_back(estimated_poses[0]); // Keep the identity pose
+
+    for (size_t i = 1; i < estimated_poses.size(); ++i) {
+        Eigen::Isometry3f scaled_pose = estimated_poses[i];
+        scaled_pose.translation() *= median_scale;
+        scaled_poses.push_back(scaled_pose);
     }
 
     // After processing all frames, output cumulative error statistics
@@ -227,8 +260,8 @@ int main(int argc, char** argv) {
     std::cout << std::endl;
     std::cout << "\n" << std::endl;
 
-    // Plot the estimated trajectory against ground truth
-    create_plot(gt_poses, estimated_poses, "Trajectory Plot");
+    // Plot the scaled estimated trajectory against ground truth
+    create_plot(gt_poses, scaled_poses, "Trajectory Plot");
 
     return 0;
 }
