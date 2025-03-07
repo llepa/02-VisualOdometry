@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
 
             // Rotation error
             Eigen::Matrix3f R_err = relative_pose.linear().transpose() * relative_pose_gt.linear();
-            float angle_error = std::acos((R_err.trace() - 1.0f) / 2.0f) * (180.0f / M_PI);
+            float angle_error = computeRotationError(R_err);
             errors_rotation.push_back(angle_error);
 
             // Translation error

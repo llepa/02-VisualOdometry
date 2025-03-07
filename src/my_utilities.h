@@ -143,3 +143,4 @@ void create_plot(const std::vector<Eigen::Isometry3f>& gt_poses,
 
 template <typename T, typename U>
 std::vector<U> vec_map(const std::vector<T>& vec, U T::*member);
+float computeRotationError(const Eigen::Matrix3f &R_err);

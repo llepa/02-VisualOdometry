@@ -435,9 +435,13 @@ Eigen::Vector3f cvToEigenVector(const cv::Mat& inputMat) {
     if (inputMat.rows != 3 || inputMat.cols != 1) {
         throw std::invalid_argument("Input cv::Mat must be a 3x1 vector of type CV_32F.");
     }
+
+    cv::Mat inputFloat;
+    inputMat.convertTo(inputFloat, CV_32F);
+
     Eigen::Vector3f eigenVec;
     for (int i = 0; i < 3; ++i) {
-        eigenVec.coeffRef(i) = inputMat.at<float>(i, 0);
+        eigenVec.coeffRef(i) = inputFloat.at<float>(i, 0);
     }
     return eigenVec;
 }
@@ -452,10 +456,14 @@ Eigen::Matrix3f cvToEigenMatrix(const cv::Mat& inputMat) {
     if (inputMat.rows != 3 || inputMat.cols != 3) {
         throw std::invalid_argument("Input cv::Mat must be a 3x3 matrix.");
     }
+
+    cv::Mat inputFloat;
+    inputMat.convertTo(inputFloat, CV_32F);
     Eigen::Matrix3f eigenMat;
+
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            eigenMat(i, j) = inputMat.at<float>(i, j);
+            eigenMat(i, j) = inputFloat.at<float>(i, j);
         }
     }
     return eigenMat;
@@ -744,7 +752,6 @@ void filter_matches(const std::vector<Data_Point>& img_points1,
     for (size_t i = 0; i < correspondences.size(); ++i) {
         const int idx1 = correspondences[i].coeff(0);
         const int idx2 = correspondences[i].coeff(1);
-
 
         // Check that indices are non-negative and within bounds
         if (idx1 < 0 || idx2 < 0 ||
@@ -1047,4 +1054,16 @@ std::vector<U> vec_map(const std::vector<T>& vec, U T::*member) {
         result.push_back(obj.*member);
     }
     return result;
+}
+
+float computeRotationError(const Eigen::Matrix3f &R_err) {
+    // Calculate the cosine of the rotation angle using the trace of R_err.
+    float cos_val = (R_err.trace() - 1.0f) / 2.0f;
+
+    // Clamp cos_val to the range [-1, 1] to avoid NaNs from acos.
+    cos_val = std::max(-1.0f, std::min(1.0f, cos_val));
+
+    // Compute the angle in radians, then convert to degrees.
+    float angle_error = std::acos(cos_val) * (180.0f / M_PI);
+    return angle_error;
 }
