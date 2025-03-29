@@ -10,4 +10,5 @@ PICP performed better when combined with inlier rejection and a threshold of 300
 
 After computing the complete robot trajectory, the scale between the ground truth trajectory and the estimated one is determined to facilitate a better comparison.
 
-The estimated trajectory (both scaled and unscaled), the estimated world points, and the rotational and translational errors are provided in the respective output files (located under output/). Corresponding plots are also included. (I am sorry for the ugly plot for comparing gt and estimated trajectories).
+The estimated trajectory (both scaled and unscaled), the estimated world points, and the rotational and translational errors are provided in the respective output files (located under output/). Corresponding plots are also included.
+(I am sorry for the ugly plot for comparing gt and estimated trajectories, but all the nice libraries for plotting data were too much for my old computer)

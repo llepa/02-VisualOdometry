@@ -35,11 +35,7 @@ int main(int argc, char** argv) {
 
     // Initialize with identity pose
     poses.push_back(Eigen::Isometry3f::Identity());
-    // gt_poses.push_back(Eigen::Isometry3f::Identity());
 
-    // ---------------------------
-    // Process the first measurement pair
-    // ---------------------------
     std::cout << "\nIteration: " << "0" << std::endl;
 
     std::vector<Data_Point> points_first = measurements[0].data_points;
@@ -62,9 +58,6 @@ int main(int argc, char** argv) {
     );
     // poses.push_back(initial_estimated_pose);
 
-    // ---------------------------
-    // Main loop: Process subsequent measurements
-    // ---------------------------
     for (int i = 0; i < n_meas - 1; i++) {
         // Save ground truth pose (after augmentation)
         Eigen::Isometry3f gt_pose = augment_pose(measurements[i].gt_pose);
@@ -92,9 +85,6 @@ int main(int argc, char** argv) {
         );
         picp_solver.setKernelThreshold(3000.0f);
 
-        // ---------------------------
-        // PICP Solver iterations
-        // ---------------------------
         const int maxIterations = 50;
         float prevError = std::numeric_limits<float>::max();
         float currentError = prevError;
@@ -144,12 +134,10 @@ int main(int argc, char** argv) {
         triangulated_world_points.clear();
         std::cout << "Number of world points: " << world_points.size() << std::endl;
     }
+
     Eigen::Isometry3f gt_pose = augment_pose(measurements[n_meas - 1].gt_pose);
     gt_poses.push_back(gt_pose);
 
-    // ---------------------------
-    // Post processing: scale and output trajectory
-    // ---------------------------
     for (size_t j = 0; j < poses.size(); j++) {
         poses[j] = cam.cameraToImage() * poses[j];
     }
@@ -196,10 +184,8 @@ int main(int argc, char** argv) {
             << pose.translation().y() << " " << angle << "\n";
 
         pose.translation() = pose.translation() * scale;
-        outputEstimatedTrajectoryScaled << counter
-            << " " << pose.translation().x() << " " << pose.translation().y()
-            << " " << gt_pose.translation().x() << " " << gt_pose.translation().y()
-            << "\n";
+        outputEstimatedTrajectoryScaled << counter << " " << pose.translation().x() << " "
+           << pose.translation().y() << " " << angle << "\n";
 
         float error_translation = (pose.translation() - gt_pose.translation()).norm();
         float error_rotation = std::abs(angle - angle_gt);
