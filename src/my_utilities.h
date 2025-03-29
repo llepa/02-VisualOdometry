@@ -9,20 +9,21 @@
 #include <utility>
 #include <cmath>
 #include <algorithm>
-#include <sstream>      // For std::stringstream
-#include <iomanip>      // For std::setfill and std::setw
-
+#include <sstream>
+#include <iomanip>
 #include <Eigen/Dense>
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
-#include <opencv2/core/eigen.hpp> // For cv::eigen2cv and cv::cv2eigen
+#include <opencv2/core/eigen.hpp>
 
 #include "data_point.h"
-#include "cam.h"
 #include "picp_solver.h"
+#include "defs.h"
+
+using namespace pr;
 
 struct Measurement {
     int seq;
@@ -35,21 +36,20 @@ struct Measurement {
         : seq(0), 
           gt_pose(Eigen::Vector3f::Zero()), 
           odometry_pose(Eigen::Vector3f::Zero()),
-          data_points() {}
+          data_points() {
+    }
 };
 
-struct World_Point {
-    cv::Point3f coordinates;
-    Eigen::VectorXf descriptor;
-    int id_real;
-};
+// Matching thresholds
+inline const float DISTANCE_THRESHOLD = 0.2f;
+inline const float FRAMES_DISTANCE_THRESHOLD = 0.1f; // Maximum allowed Euclidean distance between descriptors.
+inline const float RATIO_THRESHOLD = 0.8f;    // Lowe's ratio test threshold.
+inline const int PICP_RUNS = 10;
 
 // Type Aliases for Better Readability
-using Vector2fVector = std::vector<Eigen::Vector2f>;
-using Vector3fVector = std::vector<Eigen::Vector3f>;
-using IntPairVector = std::vector<Eigen::Vector2i>;
-
-// Function Declarations
+// using Vector2fVector = std::vector<Eigen::Vector2f>;
+// using Vector3fVector = std::vector<Eigen::Vector3f>;
+// using IntPairVector = std::vector<Eigen::Vector2i>;
 
 // Utility Functions
 float euclidean_distance(const Eigen::VectorXf& vec1, const Eigen::VectorXf& vec2);
@@ -61,16 +61,69 @@ void extract_coordinates_from_matches(
     std::vector<cv::Point2f>& matches2
 );
 cv::Mat extract_matrix_coordinates(const std::vector<Data_Point>& points);
-void match_points(const std::vector<Data_Point>& data_points1,
-                 const std::vector<Data_Point>& data_points2,
-                 std::vector<std::pair<Data_Point, Data_Point>>& matches,
-                 std::vector<Eigen::Vector2i>& matched_ids_meas,
-                 std::vector<Eigen::Vector2i>& matched_ids_real);
+cv::Mat extract_matrix_coordinates(const std::vector<World_Point>& points);
+Vector2fVector extract_V2fV(const std::vector<Data_Point>& points);
+Vector3fVector extract_V3fV(const std::vector<World_Point>& points);
+
+// For world points and image points correspondences,
+// we should pass first image points and then world points as parameters
+template <typename PointType1, typename PointType2>
+void match_points(
+    const std::vector<PointType1>& points1,
+    const std::vector<PointType2>& points2,
+    std::vector<std::pair<PointType1, PointType2>>& matches,
+    IntPairVector& correspondences
+) {
+    int total_possible_matches = 0;
+    int correct_matches = 0;
+    // Loop over every feature in the first set.
+    for (size_t i = 0; i < points1.size(); i++) {
+        const auto& p1 = points1[i];
+        float bestDistance = std::numeric_limits<float>::max();
+        float secondBestDistance = std::numeric_limits<float>::max();
+        int bestIndex = -1;
+
+        // Compare against every feature in the second set.
+        for (size_t j = 0; j < points2.size(); j++) {
+            const auto& p2 = points2[j];
+            if (p1.id_real == p2.id_real) {
+                total_possible_matches++;
+            }
+            float distance = (p1.descriptor - p2.descriptor).squaredNorm();
+            if (distance < bestDistance) {
+                secondBestDistance = bestDistance;
+                bestDistance = distance;
+                bestIndex = static_cast<int>(j);
+            } else if (distance < secondBestDistance) {
+                secondBestDistance = distance;
+            }
+        }
+
+        // Apply Lowe's ratio test and distance threshold.
+        if (bestIndex != -1 &&
+            bestDistance < DISTANCE_THRESHOLD &&
+            bestDistance / secondBestDistance < RATIO_THRESHOLD) {
+            matches.push_back(std::make_pair(p1, points2[bestIndex]));
+            IntPair pair = IntPair();
+            pair.first = i;
+            pair.second = bestIndex;
+            correspondences.push_back(pair);
+            if (p1.id_real == points2[bestIndex].id_real) {
+                correct_matches++;
+            }
+        }
+    }
+    std::cout << "Matches: Out of " << total_possible_matches
+              << " possible matches, found " << matches.size()
+              << ", of which " << correct_matches << " are correct"
+              << std::endl;
+}
+
 std::vector<std::string> split(const std::string& str, const std::string& delimiter);
 Measurement extract_measurement(const std::string& filename);
 std::vector<Measurement> extract_measurements(const std::string& filename, int n_meas);
 std::vector<Measurement> load_and_initialize_data(const std::string& path, int num_measurements);
-cv::Mat load_world_points(const std::string& filename);
+std::vector<World_Point> load_world_points(const std::string& filename);
 bool contains(const std::vector<int>& vec, int value);
 float match_error(const Measurement& m1, 
                  const Measurement& m2, 
@@ -141,6 +194,18 @@ void create_plot(const std::vector<Eigen::Isometry3f>& gt_poses,
                 const std::vector<Eigen::Isometry3f>& est_poses, 
                 const std::string& title);
 
-template <typename T, typename U>
-std::vector<U> vec_map(const std::vector<T>& vec, U T::*member);
 float computeRotationError(const Eigen::Matrix3f &R_err);
+std::vector<std::pair<Data_Point, Data_Point>> add_new_world_points(
+    std::vector<std::pair<Data_Point, World_Point>> img_world_matches,
+    std::vector<std::pair<Data_Point, Data_Point>> img_matches
+);
+int check_world_points_sanity(const std::vector<World_Point>& world_points);
+
+void plotTrajectories2D(
+    const std::vector<Eigen::Isometry3f>& gt_poses,
+    const std::vector<Eigen::Isometry3f>& est_poses,
+    const std::string& window_name = "Trajectory Plot"
+);
+
+Eigen::Affine3f alignTrajectories(const std::vector<Eigen::Isometry3f>& poses,
+                                  const std::vector<Eigen::Isometry3f>& gt_poses);

@@ -1,32 +1,59 @@
-# Set the minimum required CMake version
 cmake_minimum_required(VERSION 3.5)
-
-# Project name
 project(02-visualodometry)
 
-# Set CMake build flags
-set(CMAKE_BUILD_TYPE Debug)  # or Release for optimized builds
-set(CMAKE_CXX_STANDARD 17)   # C++17, adjust as necessary
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "./build")
+
+# Set build type and C++ standard
+set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find and set up dependencies
+# Find dependencies
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
+#find_package(PCL 1.2 REQUIRED)
 
-# Set the executable output directory (modern CMake way)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build")
+include_directories(${EIGEN3_INCLUDE_DIR})
 
-# Add your project's source files
-set(SOURCES src/main.cpp src/cam.cpp src/camera.cpp src/picp_solver.cpp src/my_utilities.cpp)
+link_libraries(${OpenCV_LIBS})
 
-# Create the executable target
-add_executable(${PROJECT_NAME} ${SOURCES})
+#include_directories(${PCL_INCLUDE_DIRS})
+#link_directories(${PCL_LIBRARY_DIRS})
+#add_definitions(${PCL_DEFINITIONS})
 
-# Link the required libraries (OpenCV and Eigen3)
-target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS} Eigen3::Eigen)
+# --- Executable for visual odometry test ---
+add_executable(vo
+        exec/vo.cpp
+        src/cam.cpp
+        src/camera.cpp
+        src/picp_solver.cpp
+        src/my_utilities.cpp
+)
+target_link_libraries(vo opencv_highgui Eigen3::Eigen)
 
-# Set target-specific includes
-target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
+add_executable(match_points_test
+        exec/match_points_test.cpp
+        src/cam.cpp
+        src/camera.cpp
+        src/picp_solver.cpp
+        src/my_utilities.cpp
+)
+target_link_libraries(match_points_test opencv_highgui Eigen3::Eigen)
 
-# Optionally, include your own source directory
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+add_executable(triangulate_points_test
+        exec/triangulate_points_test.cpp
+        src/cam.cpp
+        src/camera.cpp
+        src/picp_solver.cpp
+        src/my_utilities.cpp
+)
+target_link_libraries(triangulate_points_test opencv_highgui Eigen3::Eigen)
+
+add_executable(icp_test
+        exec/icp_test.cpp
+        src/cam.cpp
+        src/camera.cpp
+        src/picp_solver.cpp
+        src/my_utilities.cpp
+)
+target_link_libraries(icp_test opencv_highgui Eigen3::Eigen)

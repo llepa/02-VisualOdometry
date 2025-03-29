@@ -1,4 +1,3 @@
-// data_point.h
 #pragma once
 
 #include <opencv2/core.hpp>
@@ -15,5 +14,22 @@ struct Data_Point {
 
     Data_Point()
         : id_meas(0), id_real(0), coordinates(0.0f, 0.0f), descriptor(Eigen::VectorXf()) {}
+};
+
+struct World_Point {
+    cv::Point3f coordinates;
+    Eigen::VectorXf descriptor;
+    int id_real;
+    int id_meas;
+
+    World_Point(cv::Point3f coord, const Eigen::VectorXf& desc,  int id_real)
+        : coordinates(coord), descriptor(desc), id_real(id_real), id_meas(-1) {}
+
+    World_Point(cv::Point3f coord, const Eigen::VectorXf& desc,  int id_meas, int id_real)
+        : coordinates(coord), descriptor(desc), id_meas(id_meas), id_real(id_real) {}
 
 };
+
+typedef std::vector<Data_Point> DataPointVector;
+typedef std::vector<World_Point> WorldPointVector;
+// typedef std::vector<IntPair> IntPairVector;

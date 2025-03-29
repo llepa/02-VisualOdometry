@@ -207,6 +207,7 @@ namespace pr {
   typedef std::vector<float> FloatVector;
 
   typedef std::pair<int,int> IntPair;
-  typedef std::vector<IntPair > IntPairVector;
+
+  typedef std::vector<IntPair> IntPairVector;
 
 }

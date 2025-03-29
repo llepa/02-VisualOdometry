@@ -1,9 +1,13 @@
-#ifndef CAM_H
-#define CAM_H
+#pragma once
 
-#include "data_point.h"  // Now Data_Point is defined here
+#include "my_utilities.h"
+#include "data_point.h"
+#include "defs.h"
+#include "picp_solver.h"
+#include "camera.h"
 #include <Eigen/Core>
-#include <opencv2/core/eigen.hpp> // For eigen2cv and cv2eigen
+#include <opencv2/core/eigen.hpp>
+
 
 /**
  * @class Cam
@@ -12,6 +16,8 @@
  */
 class Cam {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     /**
      * @brief Constructs a Cam object and initializes camera parameters.
      */
@@ -34,10 +40,10 @@ public:
      * @param matches
      * @param points3D Output 3D points in homogeneous coordinates (Nx3, CV_32F).
      */
-    void triangulatePoints(const cv::Mat& T1,
-                            const cv::Mat& T2,
-                            std::vector<std::pair<Data_Point, Data_Point>>& matches,
-                            cv::Mat& points3D);
+    void triangulatePoints(const Eigen::Isometry3f& T1,
+                           const Eigen::Isometry3f&  T2,
+                           std::vector<std::pair<Data_Point, Data_Point>>& matches,
+                           std::vector<World_Point>& points3D);
 
     /**
      * @brief Projects 3D points into the image given rotation and translation.
@@ -90,9 +96,36 @@ public:
      */
     cv::Mat getTranslationVector() const { return t_; }
 
+    /**
+     *
+     * @return int The height of the camera
+     */
+    int getHeight() const;
+
+    /**
+     *
+     * @return int The widht of the camera
+     */
+    int getWidth() const;
+
+    void projectPoints(std::vector<World_Point>& world_points);
+
+    void initOneRound(std::vector<World_Point> world_points, std::vector<Data_Point> img_points);
+
+    void oneRound(pr::IntPairVector correspondences);
+
+    Eigen::Isometry3f getPose();
+
+    void setPose(Eigen::Isometry3f pose);
+
+    Eigen::Isometry3f cameraToImage();
+
+
 private:
     cv::Mat K_cv;          ///< Camera intrinsic matrix in OpenCV format.
     Eigen::Matrix3f K_eig; ///< Camera intrinsic matrix in Eigen format.
+    Eigen::Isometry3f cameraToImageTransform;
+
     float z_near;          ///< Near clipping distance (if used for visualization).
     float z_far;           ///< Far clipping distance (if used for visualization).
     int width;             ///< Image width.
@@ -100,6 +133,12 @@ private:
 
     cv::Mat R_;            ///< Rotation matrix recovered from essential matrix (3x3, CV_32F).
     cv::Mat t_;            ///< Translation vector recovered from essential matrix (3x1, CV_32F).
+
+    Vector3fVector _world_points_picp;
+    Vector2fVector _image_points_picp;
+
+    pr::Camera picp_cam;
+    pr::PICPSolver picp_solver;
 
     /**
      * @brief Computes the projection matrices P1 and P2 for triangulation.
@@ -118,5 +157,3 @@ private:
                                     cv::Mat& P1, 
                                     cv::Mat& P2);
 };
-
-#endif // CAM_H
